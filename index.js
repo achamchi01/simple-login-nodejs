@@ -9,6 +9,9 @@ const session = require("express-session");
 const bcrypt = require('bcrypt');
 const saltRounds = 10;
 
+const jwt = require("jsonwebtoken");
+const jwtSecret = "jwbtsecret"
+
 const app = express();
 
 app.use(express.json());
@@ -56,11 +59,31 @@ app.post('/register', (req, res) => {
 
 });
 
+const verifyJWT = (req, res, next)=>{
+    const token = req.headers["x-access-token"];
+    if(!token){
+        res.send("We need a token!");
+    }else {
+        jwt.verify(token, jwtSecret, (err, decoded)=>{
+            if(err){
+                res.json({auth: false, message: "Your faild to authenticated"})
+            }else{
+                req.userId = decoded.id;
+                next();
+            }
+        })
+    }
+}
+
+app.get('/isUserAuth', verifyJWT, (req, res)=>{
+    res.send("You are authenticated!");
+});
+
 app.get("/login", (req, res) => {
     if (req.session.user) {
         res.send({ loggedIn: true, user: req.session.user })
-    }else{
-        res.send({loggedIn: false });
+    } else {
+        res.send({ loggedIn: false });
     }
 })
 
@@ -76,15 +99,21 @@ app.post('/login', (req, res) => {
             if (result.length > 0) {
                 bcrypt.compare(password, result[0].password, (err, response) => {
                     if (response) {
+
+                        const id = result[0].id;
+                        const token = jwt.sign({ id }, jwtSecret, {
+                            expiresIn: 300
+                        });
+
                         req.session.user = result;
-                        console.log(req.session.user);
-                        res.send(result)
+
+                        res.json({ auth: true, token, result });
                     }
-                    else res.send({ message: "Wrong username/password combination" });
+                    else res.json({ auth: false, message: "Wrong username/password combination" });
                 })
                 // res.send(result);
             }
-            else res.send({ message: "User doesn't exist!" });
+            else res.json({ auth: false, message: "no user exist" });
         });
 });
 
